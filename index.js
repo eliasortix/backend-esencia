@@ -7,12 +7,12 @@ const path = require('path');
 
 const app = express();
 
-// ─── MIDDLEWARES GLOBAL ─────────────────────────────────────
-// Importante: cors() debe ir antes de las rutas
+// ─── MIDDLEWARES ────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 
 // ─── CONFIGURACIÓN DE CONEXIÓN ──────────────────────────────
+// Se añade ssl: { rejectUnauthorized: false } de forma robusta
 const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL, 
   ssl: { 
@@ -40,6 +40,7 @@ const setupDatabase = async () => {
       console.log("⚠️ No se encontró schema.sql en la raíz del backend.");
     }
   } catch (err) {
+    // Si el error es de certificado, intentamos informar pero no detenemos el servidor
     console.error("❌ Error en setupDatabase:", err.message);
   }
 };
@@ -86,7 +87,7 @@ app.get('/api/catalog', async (req, res) => {
       where.push(`p.team_id = $${params.length}`); 
     }
 
-    const { rows } = await pool.query(`
+    const query = `
       SELECT p.id, p.name, p.season, p.kit_type, p.version_type, p.section_type, p.cost, p.description,
              t.name AS team_name, c.name AS competition_name, c.id AS competition_id,
              (SELECT path FROM product_images WHERE product_id = p.id ORDER BY position LIMIT 1) AS image
@@ -95,22 +96,27 @@ app.get('/api/catalog', async (req, res) => {
       LEFT JOIN competitions c ON c.id = t.competition_id
       WHERE ${where.join(' AND ')}
       ORDER BY p.created_at DESC
-    `, params);
+    `;
+    const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/competitions', async (_, res) => {
-  const { rows } = await pool.query(`SELECT * FROM competitions WHERE active=true ORDER BY name`);
-  res.json(rows);
+  try {
+    const { rows } = await pool.query(`SELECT * FROM competitions WHERE active=true ORDER BY name`);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/teams/:cid', async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT id, name FROM teams WHERE competition_id=$1 AND active=true ORDER BY name`,
-    [req.params.cid]
-  );
-  res.json(rows);
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name FROM teams WHERE competition_id=$1 AND active=true ORDER BY name`,
+      [req.params.cid]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── GESTIÓN DE PRODUCTOS (ADMIN) ───────────────────────────
@@ -119,7 +125,10 @@ app.get('/api/products', auth, async (req, res) => {
     const { search } = req.query;
     const params = [];
     let extraWhere = '';
-    if (search) { params.push(`%${search}%`); extraWhere = `WHERE p.name ILIKE $1 OR t.name ILIKE $1`; }
+    if (search) { 
+      params.push(`%${search}%`); 
+      extraWhere = `WHERE p.name ILIKE $1 OR t.name ILIKE $1`; 
+    }
 
     const { rows } = await pool.query(`
       SELECT p.*, t.name AS team_name, c.name AS competition_name,
@@ -239,7 +248,6 @@ app.get('/api/stats', auth, async (_, res) => {
 // ─── ARRANQUE DEL SERVIDOR ──────────────────────────────────
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, async () => {
-  console.log(`🚀 Esencia Fut API · puerto ${PORT}`);
-  // Ejecutamos la creación de tablas al arrancar
+  console.log(`🚀 Esencia Fut API activa en puerto ${PORT}`);
   await setupDatabase();
 });
