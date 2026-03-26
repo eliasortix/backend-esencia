@@ -1,11 +1,14 @@
 const express = require('express');
-const cors    = require('cors');
-const jwt     = require('jsonwebtoken');
+const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const { Pool } = require('pg');
-const fs      = require('fs');
-const path    = require('path');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
+
+// ─── MIDDLEWARES GLOBAL ─────────────────────────────────────
+// Importante: cors() debe ir antes de las rutas
 app.use(cors());
 app.use(express.json());
 
@@ -13,7 +16,7 @@ app.use(express.json());
 const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL, 
   ssl: { 
-    rejectUnauthorized: false // <--- ESTA ES LA LÍNEA MÁGICA
+    rejectUnauthorized: false 
   } 
 });
 
