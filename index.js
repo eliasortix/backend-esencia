@@ -71,16 +71,25 @@ app.get('/api/catalog', async (req, res) => {
         }
 
         const query = `
-            SELECT p.id, p.name, p.kit_type, p.version_type, p.section_type, p.cost, p.description,
-                   t.name AS team_name, c.name AS competition_name, s.name AS season_name,
-                   (SELECT path FROM product_images WHERE product_id = p.id ORDER BY position LIMIT 1) AS image
-            FROM products p
-            LEFT JOIN teams t ON t.id = p.team_id
-            LEFT JOIN competitions c ON c.id = t.competition_id
-            LEFT JOIN seasons s ON s.id = p.season_id
-            WHERE ${where.join(' AND ')}
-            ORDER BY p.created_at DESC
-        `;
+  SELECT 
+    p.id, 
+    p.name, 
+    p.kit_type, 
+    p.version_type, 
+    p.section_type, 
+    p.cost, 
+    p.description,
+    t.name AS team_name, 
+    c.name AS competition_name, 
+    s.name AS season_name, -- Aquí traemos el nombre real de la temporada
+    (SELECT path FROM product_images WHERE product_id = p.id ORDER BY position LIMIT 1) AS image
+  FROM products p
+  LEFT JOIN teams t ON t.id = p.team_id
+  LEFT JOIN competitions c ON c.id = t.competition_id
+  LEFT JOIN seasons s ON s.id = p.season_id -- Unimos con la tabla de temporadas
+  WHERE ${where.join(' AND ')}
+  ORDER BY p.created_at DESC
+`;
         const { rows } = await pool.query(query, params);
         res.json(rows);
     } catch (e) { res.status(500).json({ error: e.message }); }
