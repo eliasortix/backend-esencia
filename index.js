@@ -79,17 +79,54 @@ app.get('/api/catalog', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── INVENTARIO (ESTA ES LA QUE TE DABA EL 404) ─────────────
+// ─── INVENTARIO ─────────────────────────────────────────────
 app.get('/api/inventory', auth, async (req, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT i.*, p.name as product_name 
             FROM inventories i 
             LEFT JOIN products p ON i.product_id = p.id 
+            WHERE i.is_sold = false
             ORDER BY i.created_at DESC
         `);
         res.json(rows);
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/inventory', auth, async (req, res) => {
+    try {
+        const { product_id, size, cost_price, quantity = 1 } = req.body;
+        for (let i = 0; i < quantity; i++) {
+            await pool.query(`
+                INSERT INTO inventories (product_id, size, cost_price, is_sold, created_at)
+                VALUES ($1, $2, $3, false, NOW())`,
+                [product_id, size, cost_price]
+            );
+        }
+        res.status(201).json({ message: 'Stock añadido correctamente' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── VENTAS (ELIMINA EL 404 EN VENTAS) ───────────────────────
+app.get('/api/sales', auth, async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT s.*, p.name as product_name 
+            FROM sales s 
+            LEFT JOIN products p ON s.product_id = p.id 
+            ORDER BY s.created_at DESC
+        `);
+        res.json(rows);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── PEDIDOS (ELIMINA EL 404 EN PEDIDOS) ──────────────────────
+app.get('/api/orders', auth, async (req, res) => {
+    try {
+        // Intenta obtener pedidos, si la tabla no existe devuelve vacío []
+        const { rows } = await pool.query(`SELECT * FROM orders ORDER BY created_at DESC`).catch(() => ({ rows: [] }));
+        res.json(rows);
+    } catch (e) { res.json([]); }
 });
 
 // ─── GESTIÓN DE PRODUCTOS (ADMIN) ───────────────────────────
@@ -122,7 +159,7 @@ app.post('/api/products', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── ESTADÍSTICAS CORREGIDAS ────────────────────────────────
+// ─── ESTADÍSTICAS ───────────────────────────────────────────
 app.get('/api/stats', auth, async (_, res) => {
     try {
         const { rows } = await pool.query(`
@@ -131,13 +168,14 @@ app.get('/api/stats', auth, async (_, res) => {
                 (SELECT COALESCE(SUM(cost),0)::float FROM products) as inversion_productos,
                 (SELECT COALESCE(SUM(sale_price),0)::float FROM sales) as total_ventas,
                 (SELECT COALESCE(SUM(company_profit),0)::float FROM sales) as total_ganancia
-        `);
+        `).catch(() => ({ rows: [{ stock_total: 0, inversion_productos: 0, total_ventas: 0, total_ganancia: 0 }] }));
+        
         const s = rows[0];
         res.json({
-            total_inv: s.stock_total,      // "Stock Real" en tu panel
-            investment: s.inversion_productos, // "Inversión"
-            revenue: s.total_ventas,       // "Facturación"
-            profit: s.total_ganancia       // "Beneficio"
+            total_inv: s.stock_total,
+            investment: s.inversion_productos,
+            revenue: s.total_ventas,
+            profit: s.total_ganancia
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
