@@ -63,17 +63,10 @@ app.get('/api/catalog', async (req, res) => {
 
         const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
-        // 🛠️ CONSULTA CORREGIDA SEGÚN TU DBEAVER
         const query = `
             SELECT 
-                p.id, 
-                p.name, 
-                p.description, 
-                p.cost, 
-                p.main_image_url AS image,
-                t.name AS team_name, 
-                c.name AS competition_name, 
-                s.name AS season_name
+                p.id, p.name, p.description, p.cost, p.main_image_url AS image,
+                t.name AS team_name, c.name AS competition_name, s.name AS season_name
             FROM products p
             LEFT JOIN teams t ON t.id = p.team_id
             LEFT JOIN competitions c ON c.id = t.competition_id
@@ -86,11 +79,25 @@ app.get('/api/catalog', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── INVENTARIO (ESTA ES LA QUE TE DABA EL 404) ─────────────
+app.get('/api/inventory', auth, async (req, res) => {
+    try {
+        const { rows } = await pool.query(`
+            SELECT i.*, p.name as product_name 
+            FROM inventories i 
+            LEFT JOIN products p ON i.product_id = p.id 
+            ORDER BY i.created_at DESC
+        `);
+        res.json(rows);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── GESTIÓN DE PRODUCTOS (ADMIN) ───────────────────────────
 app.get('/api/products', auth, async (req, res) => {
     try {
         const { rows } = await pool.query(`
-            SELECT p.*, t.name AS team_name, c.name AS competition_name, s.name AS season_name
+            SELECT p.*, t.name AS team_name, c.name AS competition_name, s.name AS season_name,
+            (SELECT COUNT(*)::int FROM inventories WHERE product_id = p.id AND is_sold = false) as stock
             FROM products p
             LEFT JOIN teams t ON t.id = p.team_id
             LEFT JOIN competitions c ON c.id = t.competition_id
@@ -106,7 +113,6 @@ app.post('/api/products', auth, async (req, res) => {
         const { team_id, season_id, name, description, cost, main_image_url } = req.body;
         const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
-        // 🛠️ INSERT CORREGIDO: Solo columnas que existen en tu imagen de DBeaver
         const { rows } = await pool.query(`
             INSERT INTO products (team_id, season_id, name, slug, description, cost, main_image_url, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *`,
@@ -116,20 +122,22 @@ app.post('/api/products', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── ESTADÍSTICAS (ADMIN) ───────────────────────────────────
+// ─── ESTADÍSTICAS CORREGIDAS ────────────────────────────────
 app.get('/api/stats', auth, async (_, res) => {
     try {
         const { rows } = await pool.query(`
             SELECT 
-                (SELECT COUNT(*)::int FROM products) as total_prod,
-                (SELECT COALESCE(SUM(cost),0)::float FROM products) as total_cost
+                (SELECT COUNT(*)::int FROM inventories WHERE is_sold = false) as stock_total,
+                (SELECT COALESCE(SUM(cost),0)::float FROM products) as inversion_productos,
+                (SELECT COALESCE(SUM(sale_price),0)::float FROM sales) as total_ventas,
+                (SELECT COALESCE(SUM(company_profit),0)::float FROM sales) as total_ganancia
         `);
+        const s = rows[0];
         res.json({
-            total_inv: rows[0].total_prod,
-            total_sales: 0,
-            revenue: 0,
-            profit: 0,
-            investment: rows[0].total_cost
+            total_inv: s.stock_total,      // "Stock Real" en tu panel
+            investment: s.inversion_productos, // "Inversión"
+            revenue: s.total_ventas,       // "Facturación"
+            profit: s.total_ganancia       // "Beneficio"
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
