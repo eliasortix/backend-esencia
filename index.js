@@ -12,7 +12,9 @@ app.use(express.json());
 // ─── CONFIGURACIÓN DE CONEXIÓN ──────────────────────────────
 const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL, 
-  ssl: { rejectUnauthorized: false } 
+  ssl: { 
+    rejectUnauthorized: false // <--- ESTA ES LA LÍNEA MÁGICA
+  } 
 });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'esenciafut-secret-local';
