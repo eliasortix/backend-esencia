@@ -65,12 +65,11 @@ app.get('/api/catalog', async (req, res) => {
 
         const query = `
             SELECT 
-                p.id, p.name, p.description, p.cost, p.main_image_url AS image,
-                t.name AS team_name, c.name AS competition_name, s.name AS season_name
+                p.id, p.name, p.season, p.cost, p.images,
+                t.name AS team_name, c.name AS competition_name
             FROM products p
             LEFT JOIN teams t ON t.id = p.team_id
             LEFT JOIN competitions c ON c.id = t.competition_id
-            LEFT JOIN seasons s ON s.id = p.season_id
             ${whereClause}
             ORDER BY p.created_at DESC
         `;
@@ -120,39 +119,31 @@ app.get('/api/sales', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── PEDIDOS ─────────────────────────────────────────────────
-app.get('/api/orders', auth, async (req, res) => {
-    try {
-        const { rows } = await pool.query(`SELECT * FROM orders ORDER BY created_at DESC`).catch(() => ({ rows: [] }));
-        res.json(rows);
-    } catch (e) { res.json([]); }
-});
-
 // ─── GESTIÓN DE PRODUCTOS (ADMIN) ───────────────────────────
 app.get('/api/products', auth, async (req, res) => {
     try {
         const { rows } = await pool.query(`
-            SELECT p.*, t.name AS team_name, c.name AS competition_name, s.name AS season_name,
+            SELECT p.*, t.name AS team_name, c.name AS competition_name,
             (SELECT COUNT(*)::int FROM inventories WHERE product_id = p.id AND is_sold = false) as stock
             FROM products p
             LEFT JOIN teams t ON t.id = p.team_id
             LEFT JOIN competitions c ON c.id = t.competition_id
-            LEFT JOIN seasons s ON s.id = p.season_id
             ORDER BY p.created_at DESC
         `);
         res.json(rows);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// CORREGIDO: SE ELIMINÓ EL CAMPO "SLUG"
+// ACTUALIZADO: TEMPORADA MANUAL, MULTI-IMAGEN Y SIN DESCRIPCIÓN
 app.post('/api/products', auth, async (req, res) => {
     try {
-        const { team_id, season_id, name, description, cost, main_image_url } = req.body;
+        const { team_id, season, name, cost, images } = req.body; 
+        // 'images' debe ser un array: ["url1", "url2"]
 
         const { rows } = await pool.query(`
-            INSERT INTO products (team_id, season_id, name, description, cost, main_image_url, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *`,
-            [team_id, season_id, name, description, cost, main_image_url]
+            INSERT INTO products (team_id, season, name, cost, images, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) RETURNING *`,
+            [team_id, season, name, cost, JSON.stringify(images)]
         );
         res.status(201).json(rows[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -190,13 +181,6 @@ app.get('/api/competitions', async (_, res) => {
 app.get('/api/teams/:cid', async (req, res) => {
     try {
         const { rows } = await pool.query(`SELECT id, name FROM teams WHERE competition_id=$1 ORDER BY name`, [req.params.cid]);
-        res.json(rows);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/seasons', async (_, res) => {
-    try {
-        const { rows } = await pool.query(`SELECT * FROM seasons ORDER BY name DESC`);
         res.json(rows);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
