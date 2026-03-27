@@ -107,7 +107,7 @@ app.post('/api/inventory', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── VENTAS (ELIMINA EL 404 EN VENTAS) ───────────────────────
+// ─── VENTAS ──────────────────────────────────────────────────
 app.get('/api/sales', auth, async (req, res) => {
     try {
         const { rows } = await pool.query(`
@@ -120,10 +120,9 @@ app.get('/api/sales', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── PEDIDOS (ELIMINA EL 404 EN PEDIDOS) ──────────────────────
+// ─── PEDIDOS ─────────────────────────────────────────────────
 app.get('/api/orders', auth, async (req, res) => {
     try {
-        // Intenta obtener pedidos, si la tabla no existe devuelve vacío []
         const { rows } = await pool.query(`SELECT * FROM orders ORDER BY created_at DESC`).catch(() => ({ rows: [] }));
         res.json(rows);
     } catch (e) { res.json([]); }
@@ -145,15 +144,15 @@ app.get('/api/products', auth, async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// CORREGIDO: SE ELIMINÓ EL CAMPO "SLUG"
 app.post('/api/products', auth, async (req, res) => {
     try {
         const { team_id, season_id, name, description, cost, main_image_url } = req.body;
-        const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
         const { rows } = await pool.query(`
-            INSERT INTO products (team_id, season_id, name, slug, description, cost, main_image_url, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *`,
-            [team_id, season_id, name, slug, description, cost, main_image_url]
+            INSERT INTO products (team_id, season_id, name, description, cost, main_image_url, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *`,
+            [team_id, season_id, name, description, cost, main_image_url]
         );
         res.status(201).json(rows[0]);
     } catch (e) { res.status(500).json({ error: e.message }); }
